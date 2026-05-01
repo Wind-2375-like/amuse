@@ -14,10 +14,10 @@ in later phases.
 ## 1. Onboard in 5 minutes (read this first)
 
 ```bash
-git clone https://github.com/Wind-2375-like/amuse.git nlp_project && cd nlp_project
+git clone https://github.com/Wind-2375-like/amuse.git amuse && cd amuse
 
 # 1. Create env (Python >=3.10). Conda or venv both fine.
-conda create -n nlpproj python=3.10 -y && conda activate nlpproj
+conda create -n amuse python=3.10 -y && conda activate amuse
 
 # 2. Install deps.
 #    Add the `serve` extra ONLY on the box that will run vLLM (it's heavy).
