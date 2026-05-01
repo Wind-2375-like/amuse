@@ -4,11 +4,7 @@ You are given:
 1. A SOURCE DOCUMENT.
 2. A SINGLE SENTENCE taken from a candidate summary of that document.
 
-Your task: decide whether the SINGLE SENTENCE is *faithful* to the SOURCE
-DOCUMENT. A sentence is faithful only if every factual claim it makes is
-directly supported by, or trivially entailed by, information in the SOURCE
-DOCUMENT. If the sentence introduces information not present in the source,
-contradicts the source, or makes unsupported inferences, it is NOT faithful.
+Your task: decide whether the SINGLE SENTENCE is *faithful* to the SOURCE DOCUMENT. A sentence is faithful only if every factual claim it makes is directly supported by, or trivially entailed by, information in the SOURCE DOCUMENT. If the sentence introduces information not present in the source, contradicts the source, or makes unsupported inferences, it is NOT faithful.
 
 Notes:
 - Stylistic paraphrasing is fine; only factual content matters.
