@@ -1,0 +1,34 @@
+# Default config for sentence-level faithfulness scoring.
+# Override with env vars or by passing --config to scripts.
+
+# --- Model / endpoint ---
+# We always talk to an OpenAI-compatible HTTP endpoint (vLLM by default).
+# Switching providers => change these three fields only.
+model_name: "Qwen/Qwen3-8B"
+endpoint: "http://localhost:8000/v1"
+api_key: "EMPTY"   # vLLM ignores this but the openai client requires a non-empty string
+
+# --- Generation ---
+max_tokens: 256
+temperature: 0.0
+top_p: 1.0
+# Hard request timeout (seconds) per call.
+request_timeout: 120
+# Retries on parse / API failure.
+max_retries: 3
+
+# --- Prompt ---
+prompt_version: "sentence_faithfulness_v1"
+prompt_path: "prompts/sentence_faithfulness_v1.txt"
+
+# --- Cache ---
+# results/cache/<model_slug>/<dataset>.jsonl
+cache_dir: "results/cache"
+
+# --- Dataset ---
+dataset_name: "aggrefact"
+# Path of the loader output (parquet) — produced by scripts/load_aggrefact.py
+dataset_path: "data/aggrefact/aggrefact.parquet"
+
+# --- Sentence splitting ---
+spacy_model: "en_core_web_sm"

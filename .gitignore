@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Build / dist
+build/
+dist/
+
+# vLLM / HF caches (host-local)
+.cache/
+hf_cache/
+.vllm/
+
+# Large artifacts (we keep results/cache/ tracked, see README)
+results/runs/
+results/*.parquet
+*.log
+
+# Data — pulled from HF, not committed
+data/aggrefact/raw/
+data/aggrefact/*.parquet
+data/aggrefact/*.csv

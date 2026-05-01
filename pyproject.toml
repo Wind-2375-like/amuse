@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nlp-project"
+version = "0.1.0"
+description = "Investigating Aggregation Methods for LLM-based Summary Faithfulness Evaluation"
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.30",
+    "spacy>=3.7",
+    "datasets>=2.18",
+    "pandas>=2.1",
+    "numpy>=1.26",
+    "pydantic>=2.6",
+    "tqdm>=4.66",
+    "pyyaml>=6.0",
+    "pyarrow>=15.0",
+]
+
+[project.optional-dependencies]
+# vLLM is heavy and host-specific; install on the serving box only.
+serve = [
+    "vllm>=0.6.0",
+]
+
+[tool.setuptools]
+# Treat repo as a flat collection of packages.
+packages = [
+    "evaluators",
+    "aggregation",
+    "eval",
+    "data",
+]
+
+[tool.setuptools.package-dir]
+evaluators = "evaluators"
+aggregation = "aggregation"
+eval = "eval"
+data = "data"
