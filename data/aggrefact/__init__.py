@@ -23,9 +23,10 @@ import pandas as pd
 
 
 # Candidate HF dataset IDs (we try in order; the AggreFact community has a few mirrors).
+# `lytang/LLM-AggreFact` is gated — run `huggingface-cli login` once.
 _CANDIDATES = [
+    "lytang/LLM-AggreFact",
     "yuh-zha/AggreFact",
-    "lytang/LLM-AggreFact",  # broader superset; fallback
 ]
 
 
