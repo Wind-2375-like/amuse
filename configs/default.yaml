@@ -9,13 +9,16 @@ endpoint: "http://localhost:8000/v1"
 api_key: "EMPTY"   # vLLM ignores this but the openai client requires a non-empty string
 
 # --- Generation ---
-max_tokens: 256
+max_tokens: 512
 temperature: 0.0
 top_p: 1.0
 # Hard request timeout (seconds) per call.
 request_timeout: 120
 # Retries on parse / API failure.
 max_retries: 3
+# Reasoning models (Qwen3, DeepSeek-R1, ...) burn max_tokens on <think> blocks
+# before they ever emit JSON. Keep this False unless you want raw reasoning.
+enable_thinking: false
 
 # --- Prompt ---
 prompt_version: "sentence_faithfulness_v1"

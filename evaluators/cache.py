@@ -141,7 +141,7 @@ class CachedEvaluator:
             prompt_version=self.evaluator.prompt_version,
         )
         hit = self.cache.get(key)
-        if hit is not None:
+        if hit is not None and not hit.get("parse_failed", False):
             return (
                 SentenceScore(
                     faithful=hit["faithful"],
@@ -152,6 +152,7 @@ class CachedEvaluator:
                 ),
                 True,
             )
+        # cache miss OR previously-failed entry — re-score.
         score = self.evaluator.score_sentence(document, sentence)
         self.cache.put(key, score)
         return score, False

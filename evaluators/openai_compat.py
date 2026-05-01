@@ -13,11 +13,14 @@ from .base import SentenceEvaluator, SentenceScore
 
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 
 def _parse_json_response(text: str) -> Optional[dict]:
     """Try strict JSON first, then a regex fallback to grab the first {...}."""
     text = text.strip()
+    # Strip <think>...</think> blocks that some reasoning models always emit.
+    text = _THINK_RE.sub("", text).strip()
     # Strip code fences if the model wrapped output.
     if text.startswith("```"):
         text = text.strip("`")
@@ -75,6 +78,7 @@ class OpenAICompatEvaluator(SentenceEvaluator):
         top_p: float = 1.0,
         request_timeout: float = 120.0,
         max_retries: int = 3,
+        enable_thinking: bool = False,
     ):
         self._model_name = model_name
         self._prompt_version = prompt_version
@@ -83,6 +87,7 @@ class OpenAICompatEvaluator(SentenceEvaluator):
         self.temperature = temperature
         self.top_p = top_p
         self.max_retries = max_retries
+        self.enable_thinking = enable_thinking
         self.client = OpenAI(
             base_url=endpoint,
             api_key=api_key or "EMPTY",
@@ -104,6 +109,7 @@ class OpenAICompatEvaluator(SentenceEvaluator):
             top_p=cfg.get("top_p", 1.0),
             request_timeout=cfg.get("request_timeout", 120.0),
             max_retries=cfg.get("max_retries", 3),
+            enable_thinking=cfg.get("enable_thinking", False),
         )
 
     @property
@@ -123,6 +129,14 @@ class OpenAICompatEvaluator(SentenceEvaluator):
         prompt = self._build_prompt(document, sentence)
         last_raw = ""
         last_err: Optional[Exception] = None
+        # Qwen3 / DeepSeek-R1 are reasoning models that emit <think>...</think>
+        # by default and burn through max_tokens before producing JSON. We
+        # disable that via Qwen's `enable_thinking` chat-template flag, which
+        # vLLM forwards from `extra_body.chat_template_kwargs`.
+        extra_body = (
+            {} if self.enable_thinking
+            else {"chat_template_kwargs": {"enable_thinking": False}}
+        )
         for attempt in range(self.max_retries):
             try:
                 resp = self.client.chat.completions.create(
@@ -131,6 +145,7 @@ class OpenAICompatEvaluator(SentenceEvaluator):
                     max_tokens=self.max_tokens,
                     temperature=self.temperature,
                     top_p=self.top_p,
+                    extra_body=extra_body,
                 )
                 last_raw = resp.choices[0].message.content or ""
                 parsed = _parse_json_response(last_raw)
