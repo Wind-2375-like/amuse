@@ -14,7 +14,7 @@ in later phases.
 ## 1. Onboard in 5 minutes (read this first)
 
 ```bash
-git clone <repo-url> nlp_project && cd nlp_project
+git clone https://github.com/Wind-2375-like/amuse.git nlp_project && cd nlp_project
 
 # 1. Create env (Python >=3.10). Conda or venv both fine.
 conda create -n nlpproj python=3.10 -y && conda activate nlpproj
