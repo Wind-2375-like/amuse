@@ -117,6 +117,21 @@ def main() -> None:
                    help="If dataset parquet is missing, use a tiny inline dataset (smoke test only).")
     p.add_argument("--model", default=None, help="Override model_name from config.")
     p.add_argument("--endpoint", default=None, help="Override endpoint from config.")
+    p.add_argument(
+        "--origin",
+        nargs="+",
+        default=["AggreFact-CNN", "AggreFact-XSum"],
+        help="Keep only rows whose `origin` is in this list. "
+             "lytang/LLM-AggreFact bundles 11 subsets; the real AggreFact is "
+             "AggreFact-CNN + AggreFact-XSum (~2.3k rows). "
+             "Pass --origin all to disable filtering.",
+    )
+    p.add_argument(
+        "--split",
+        nargs="+",
+        default=None,
+        help="Keep only these splits (e.g. test). Default: all splits in the parquet.",
+    )
     args = p.parse_args()
 
     cfg = _load_config(args.config)
@@ -130,6 +145,17 @@ def main() -> None:
 
     fallback_inline = args.mock or args.inline_fallback
     df = _maybe_load_dataset(cfg, fallback_inline=fallback_inline)
+
+    # --- subset filtering ---
+    if args.origin and not (len(args.origin) == 1 and args.origin[0].lower() == "all"):
+        before = len(df)
+        df = df[df["origin"].isin(args.origin)].reset_index(drop=True)
+        print(f"[score_sentences] origin filter {args.origin}: {before} -> {len(df)} rows")
+    if args.split:
+        before = len(df)
+        df = df[df["split"].isin(args.split)].reset_index(drop=True)
+        print(f"[score_sentences] split filter {args.split}: {before} -> {len(df)} rows")
+
     if args.limit is not None:
         df = df.head(args.limit).reset_index(drop=True)
 
