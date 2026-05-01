@@ -20,12 +20,20 @@ from data.aggrefact import load_aggrefact
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--out", default="data/aggrefact/aggrefact.parquet")
-    p.add_argument("--splits", nargs="+", default=["validation", "test"])
+    p.add_argument(
+        "--splits",
+        nargs="+",
+        default=None,
+        help="If omitted, use all splits the dataset actually exposes.",
+    )
     p.add_argument("--max-rows", type=int, default=None)
     args = p.parse_args()
 
-    print(f"[load_aggrefact] pulling splits={args.splits} ...", flush=True)
-    df = load_aggrefact(splits=tuple(args.splits), max_rows=args.max_rows)
+    print(f"[load_aggrefact] pulling splits={args.splits or 'auto'} ...", flush=True)
+    df = load_aggrefact(
+        splits=tuple(args.splits) if args.splits else None,
+        max_rows=args.max_rows,
+    )
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out, index=False)

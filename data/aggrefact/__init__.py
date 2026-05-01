@@ -87,38 +87,77 @@ def _normalize(df: pd.DataFrame, source_id: str) -> pd.DataFrame:
 
 
 def load_aggrefact(
-    splits: tuple[str, ...] = ("validation", "test"),
+    splits: Optional[tuple[str, ...]] = None,
     max_rows: Optional[int] = None,
 ) -> pd.DataFrame:
-    """Try each candidate source until one loads. Returns concatenated frame."""
-    from datasets import load_dataset, get_dataset_config_names  # lazy import
+    """Try each candidate source until one loads. Returns concatenated frame.
 
-    last_err: Optional[Exception] = None
+    `splits=None` means "use whatever splits the dataset actually has"
+    (recommended; AggreFact mirrors disagree on split names — some only have
+    `test`).
+    """
+    from datasets import (  # lazy import
+        load_dataset,
+        get_dataset_config_names,
+        get_dataset_split_names,
+    )
+
+    errors: list[str] = []
     for ds_id in _CANDIDATES:
+        print(f"[load_aggrefact] trying {ds_id} ...", flush=True)
         try:
+            configs = get_dataset_config_names(ds_id)
+        except Exception as e:
+            errors.append(f"{ds_id}: get_configs failed: {e!r}")
+            configs = [None]
+        if not configs:
+            configs = [None]
+
+        frames = []
+        for cfg in configs:
+            # Resolve splits dynamically per config.
             try:
-                configs = get_dataset_config_names(ds_id)
-            except Exception:
-                configs = [None]
-            frames = []
-            for cfg in configs:
-                for split in splits:
-                    try:
-                        ds = load_dataset(ds_id, cfg, split=split) if cfg else load_dataset(ds_id, split=split)
-                    except Exception:
-                        continue
+                avail = get_dataset_split_names(ds_id, cfg) if cfg else get_dataset_split_names(ds_id)
+            except Exception as e:
+                errors.append(f"{ds_id}/{cfg}: get_splits failed: {e!r}")
+                avail = []
+            if not avail:
+                # Fall back to common names.
+                avail = ["test", "validation", "train"]
+
+            wanted = list(splits) if splits else avail
+            # Keep only splits that actually exist (intersection preserving order).
+            wanted = [s for s in wanted if s in avail] or avail
+
+            for split in wanted:
+                try:
+                    ds = (
+                        load_dataset(ds_id, cfg, split=split)
+                        if cfg else load_dataset(ds_id, split=split)
+                    )
+                except Exception as e:
+                    errors.append(f"{ds_id}/{cfg}/{split}: load failed: {e!r}")
+                    continue
+                try:
                     df = ds.to_pandas()
                     df = _normalize(df, source_id=f"{ds_id}/{cfg or 'default'}")
-                    df["split"] = df["split"].where(df["split"].astype(str) != "unknown", split)
-                    frames.append(df)
-            if frames:
-                full = pd.concat(frames, ignore_index=True)
-                if max_rows is not None:
-                    full = full.head(max_rows).reset_index(drop=True)
-                return full
-        except Exception as e:
-            last_err = e
-            continue
+                except Exception as e:
+                    errors.append(f"{ds_id}/{cfg}/{split}: normalize failed: {e!r}")
+                    continue
+                df["split"] = df["split"].where(df["split"].astype(str) != "unknown", split)
+                print(
+                    f"[load_aggrefact]   loaded {ds_id}/{cfg}/{split}: {len(df)} rows",
+                    flush=True,
+                )
+                frames.append(df)
+
+        if frames:
+            full = pd.concat(frames, ignore_index=True)
+            if max_rows is not None:
+                full = full.head(max_rows).reset_index(drop=True)
+            return full
+
+    msg = "\n  ".join(errors) if errors else "(no inner errors collected)"
     raise RuntimeError(
-        f"Could not load AggreFact from any of {_CANDIDATES}. Last error: {last_err}"
+        f"Could not load AggreFact from any of {_CANDIDATES}. Inner errors:\n  {msg}"
     )
