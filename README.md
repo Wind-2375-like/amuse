@@ -72,10 +72,10 @@ nlp_project/
 │   └── plot_agg_vs_human.py      # sanity scatter (mean vs min)
 └── results/
     ├── cache/<model_slug>/<dataset>.jsonl   # see §6
-    ├── sentence_scores.parquet              # Phase 1 output
-    ├── summary_scores.parquet               # Phase 2 per-summary aggregates
-    ├── meta_eval_summary.csv                # Phase 2 long-format results
-    ├── meta_eval_table.md                   # Phase 2 human-readable tables
+    ├── sentence_scores.<model_slug>.parquet # Phase 1 output
+    ├── summary_scores.<model_slug>.parquet  # Phase 2 per-summary aggregates
+    ├── meta_eval_summary.<model_slug>.csv   # Phase 2 long-format results
+    ├── meta_eval_table.<model_slug>.md      # Phase 2 human-readable tables
     └── figs/mean_vs_min_scatter.png         # Phase 2 sanity plot
 ```
 
@@ -126,14 +126,14 @@ python scripts/load_aggrefact.py --out data/aggrefact/aggrefact.parquet
 
 # Step B — sentence-level scoring (cached, defaults to AggreFact-CNN+XSum).
 python scripts/score_sentences.py
-# -> results/sentence_scores.parquet
+# -> results/sentence_scores.Qwen_Qwen3-8B.parquet  (default config)
 ```
 
 The default `--origin AggreFact-CNN AggreFact-XSum` filter is what produces
 the canonical 2,352-summary / 4,654-sentence working set. Pass
 `--origin all` to disable filtering.
 
-Output schema (`results/sentence_scores.parquet`):
+Output schema (`results/sentence_scores.<model_slug>.parquet`):
 
 | col              | type    | meaning                              |
 |------------------|---------|--------------------------------------|
@@ -164,18 +164,23 @@ parquet is absent.
 ### 5.1 Run
 
 ```bash
-# Reads results/sentence_scores.parquet + data/aggrefact/aggrefact.parquet,
-# writes results/{summary_scores.parquet, meta_eval_summary.csv,
-# meta_eval_table.md}.
-python -m eval.run_meta_eval
+# Reads one sentence-score parquet + data/aggrefact/aggrefact.parquet.
+# If multiple sentence-score files exist, pass --sentence-scores explicitly.
+python -m eval.run_meta_eval \
+  --sentence-scores results/sentence_scores.Qwen_Qwen3-8B.parquet
 
-# Sanity scatter (reads results/summary_scores.parquet).
-python scripts/plot_agg_vs_human.py
-# -> results/figs/mean_vs_min_scatter.png
+# -> results/{summary_scores.Qwen_Qwen3-8B.parquet,
+#             meta_eval_summary.Qwen_Qwen3-8B.csv,
+#             meta_eval_table.Qwen_Qwen3-8B.md}
+
+# Sanity scatter.
+python scripts/plot_agg_vs_human.py \
+  --summary-parquet results/summary_scores.Qwen_Qwen3-8B.parquet
+# -> results/figs/mean_vs_min_scatter.Qwen_Qwen3-8B.png
 ```
 
 The whole Phase-2 pipeline finishes in well under a minute on a laptop —
-no GPU and no LLM calls (everything is read from `sentence_scores.parquet`).
+no GPU and no LLM calls (everything is read from the sentence-score parquet).
 
 ### 5.2 Aggregation methods (`aggregation/methods.py`)
 
@@ -207,12 +212,12 @@ Each metric is paired with a **percentile bootstrap CI** (`bootstrap_ci`,
 
 ### 5.4 Outputs
 
-- `results/summary_scores.parquet` — one row per summary, one column per
+- `results/summary_scores.<model_slug>.parquet` — one row per summary, one column per
   `(aggregation, semantic)` pair, plus `human_label`, `origin`, `n_sent`.
   Used by the plot script and as the entry point for any downstream analysis.
-- `results/meta_eval_summary.csv` — long-format table with columns
+- `results/meta_eval_summary.<model_slug>.csv` — long-format table with columns
   `aggregation, semantic, origin, metric, value, ci_lo, ci_hi, n`.
-- `results/meta_eval_table.md` — human-readable pivot tables, one block per
+- `results/meta_eval_table.<model_slug>.md` — human-readable pivot tables, one block per
   origin (`AggreFact-CNN`, `AggreFact-XSum`, `__overall__`), each split into
   `hard` and `soft` sub-tables. CIs that include 0 are flagged with `⁰`.
 
@@ -232,7 +237,7 @@ Spearman ρ with human label, overall (n = 2352), 95 % bootstrap CI:
 | `prob_all_faithful` | —                             | +0.319 [+0.280, +0.363]       |
 
 Best overall Spearman: `trimmed_mean@0.2` on hard inputs (ρ = +0.494).
-See `results/meta_eval_table.md` for Pearson / Kendall / ROC-AUC and the
+See `results/meta_eval_table.Qwen_Qwen3-8B.md` for Pearson / Kendall / ROC-AUC and the
 per-origin breakdown.
 
 ### 5.6 Caveats from the Phase-2 run
@@ -300,6 +305,8 @@ MODEL_NAME=Qwen/Qwen3-1.7B ENDPOINT=http://localhost:8000/v1 \
 ```
 
 `MODEL_NAME` is part of the cache key, so each model gets its own cache file.
+The default parquet / CSV / markdown outputs are also model-specific, so 4B
+and 8B runs no longer overwrite each other.
 
 ---
 

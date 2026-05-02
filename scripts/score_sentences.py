@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -38,6 +39,14 @@ from evaluators import (
 def _load_config(path: str) -> dict[str, Any]:
     with open(path) as f:
         return yaml.safe_load(f)
+
+
+def _slugify(name: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9._-]+", "_", name).strip("_")
+
+
+def _default_output_path(model_name: str) -> Path:
+    return Path("results") / f"sentence_scores.{_slugify(model_name)}.parquet"
 
 
 def _maybe_load_dataset(cfg: dict, fallback_inline: bool) -> pd.DataFrame:
@@ -208,7 +217,11 @@ def main() -> None:
     cached.close()
     elapsed = time.time() - t0
     out_df = pd.DataFrame(rows)
-    out_path = Path(args.out)
+    out_path = (
+        _default_output_path(evaluator.model_name)
+        if args.out == "results/sentence_scores.parquet"
+        else Path(args.out)
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_df.to_parquet(out_path, index=False)
     print(

@@ -21,13 +21,46 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
+def _resolve_summary_path(arg_value: str | None) -> Path:
+    if arg_value:
+        return Path(arg_value)
+
+    candidates = sorted(
+        Path("results").glob("summary_scores*.parquet"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidates:
+        raise FileNotFoundError(
+            "No summary-score parquet found under results/. Run python -m eval.run_meta_eval first."
+        )
+    if len(candidates) > 1:
+        listed = "\n".join(f"  - {path}" for path in candidates)
+        raise ValueError(
+            "Multiple summary-score parquet files found. Pass --summary-parquet explicitly.\n"
+            f"Candidates:\n{listed}"
+        )
+    return candidates[0]
+
+
+def _default_plot_path(summary_parquet: Path) -> Path:
+    stem = summary_parquet.stem
+    if stem == "summary_scores":
+        return Path("results/figs/mean_vs_min_scatter.png")
+    suffix = stem.removeprefix("summary_scores")
+    return Path("results/figs") / f"mean_vs_min_scatter{suffix}.png"
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--summary-parquet", default="results/summary_scores.parquet")
-    p.add_argument("--out", default="results/figs/mean_vs_min_scatter.png")
+    p.add_argument("--summary-parquet", default=None)
+    p.add_argument("--out", default=None)
     args = p.parse_args()
 
-    df = pd.read_parquet(args.summary_parquet)
+    summary_parquet = _resolve_summary_path(args.summary_parquet)
+    out = Path(args.out) if args.out else _default_plot_path(summary_parquet)
+
+    df = pd.read_parquet(summary_parquet)
     rng = np.random.default_rng(0)
     # Jitter human_label (binary 0/1) on y for legibility.
     y = df["human_label"].astype(float).to_numpy()
@@ -48,7 +81,6 @@ def main() -> None:
     ax.legend(loc="center left")
     ax.grid(alpha=0.3)
 
-    out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
     fig.savefig(out, dpi=150)

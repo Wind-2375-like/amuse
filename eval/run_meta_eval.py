@@ -31,6 +31,36 @@ from aggregation.methods import AGGREGATIONS, SOFT_ONLY
 from eval.metrics import METRICS, bootstrap_ci
 
 
+def _resolve_sentence_scores_path(arg_value: Optional[str]) -> Path:
+    if arg_value:
+        return Path(arg_value)
+
+    candidates = sorted(
+        Path("results").glob("sentence_scores*.parquet"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidates:
+        raise FileNotFoundError(
+            "No sentence-score parquet found under results/. Run scripts/score_sentences.py first."
+        )
+    if len(candidates) > 1:
+        listed = "\n".join(f"  - {path}" for path in candidates)
+        raise ValueError(
+            "Multiple sentence-score parquet files found. Pass --sentence-scores explicitly.\n"
+            f"Candidates:\n{listed}"
+        )
+    return candidates[0]
+
+
+def _default_output_path(sentence_scores: Path, prefix: str, suffix: str) -> Path:
+    stem = sentence_scores.stem
+    if stem == "sentence_scores":
+        return Path("results") / f"{prefix}{suffix}"
+    derived = stem.replace("sentence_scores", prefix, 1)
+    return Path("results") / f"{derived}{suffix}"
+
+
 # ---------------------------------------------------------------------------
 # Data loading + aggregation
 # ---------------------------------------------------------------------------
@@ -213,19 +243,37 @@ def sanity_checks(summary_df: pd.DataFrame) -> list[str]:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--sentence-scores", default="results/sentence_scores.parquet")
+    p.add_argument(
+        "--sentence-scores",
+        default=None,
+        help="Sentence-level parquet from scripts/score_sentences.py. Required when multiple model-specific files exist.",
+    )
     p.add_argument("--dataset", default="data/aggrefact/aggrefact.parquet")
-    p.add_argument("--out-csv", default="results/meta_eval_summary.csv")
-    p.add_argument("--out-md", default="results/meta_eval_table.md")
+    p.add_argument("--out-csv", default=None)
+    p.add_argument("--out-md", default=None)
     p.add_argument("--out-summary-parquet",
-                   default="results/summary_scores.parquet",
+                   default=None,
                    help="Per-summary aggregated scores (used by plot script).")
     p.add_argument("--n-bootstrap", type=int, default=1000)
     p.add_argument("--seed", type=int, default=0)
     args = p.parse_args()
 
-    sent = load_sentence_scores(Path(args.sentence_scores))
+    sentence_scores_path = _resolve_sentence_scores_path(args.sentence_scores)
+    out_csv = Path(args.out_csv) if args.out_csv else _default_output_path(
+        sentence_scores_path, "meta_eval_summary", ".csv"
+    )
+    out_md = Path(args.out_md) if args.out_md else _default_output_path(
+        sentence_scores_path, "meta_eval_table", ".md"
+    )
+    out_summary_parquet = (
+        Path(args.out_summary_parquet)
+        if args.out_summary_parquet
+        else _default_output_path(sentence_scores_path, "summary_scores", ".parquet")
+    )
+
+    sent = load_sentence_scores(sentence_scores_path)
     meta = load_dataset_meta(Path(args.dataset))
+    print(f"[meta_eval] sentence scores: {sentence_scores_path}")
     print(f"[meta_eval] sentences: {len(sent)} | summaries (sent_df): "
           f"{sent['doc_id'].nunique()} | dataset rows: {len(meta)}")
 
@@ -245,23 +293,23 @@ def main() -> None:
         print(f"[meta_eval] {msg}")
     print("[meta_eval] origin counts:", summary["origin"].value_counts().to_dict())
 
-    Path(args.out_summary_parquet).parent.mkdir(parents=True, exist_ok=True)
-    summary.to_parquet(args.out_summary_parquet, index=False)
+    out_summary_parquet.parent.mkdir(parents=True, exist_ok=True)
+    summary.to_parquet(out_summary_parquet, index=False)
 
     eval_df = evaluate(summary, n_bootstrap=args.n_bootstrap, seed=args.seed)
 
-    Path(args.out_csv).parent.mkdir(parents=True, exist_ok=True)
-    eval_df.to_csv(args.out_csv, index=False)
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    eval_df.to_csv(out_csv, index=False)
 
     md = to_markdown(eval_df)
-    Path(args.out_md).write_text(md + "\n")
+    out_md.write_text(md + "\n")
 
     print()
     print(md)
     print()
     print(takeaway(eval_df))
     print()
-    print(f"[meta_eval] wrote {args.out_csv}, {args.out_md}, {args.out_summary_parquet}")
+    print(f"[meta_eval] wrote {out_csv}, {out_md}, {out_summary_parquet}")
 
 
 if __name__ == "__main__":
