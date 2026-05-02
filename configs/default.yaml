@@ -21,8 +21,8 @@ max_retries: 3
 enable_thinking: false
 
 # --- Prompt ---
-prompt_version: "sentence_faithfulness_v1"
-prompt_path: "prompts/sentence_faithfulness_v1.txt"
+prompt_version: "sentence_faithfulness_v2"
+prompt_path: "prompts/sentence_faithfulness_v2.txt"
 
 # --- Cache ---
 # results/cache/<model_slug>/<dataset>.jsonl

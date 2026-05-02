@@ -299,8 +299,17 @@ scalar. The registry `AGGREGATIONS` is what `run_meta_eval.py` iterates over.
 | `prob_all_faithful`       | `exp(sum(log(clip(s, 1e-6, 1))))` ≡ `∏ pᵢ`                 | yes |
 
 Two **input semantics** are evaluated and reported separately:
-- **`hard`** — uses the binary `faithful` column directly.
-- **`soft`** — uses `P(faithful=1) = faithful·confidence + (1-faithful)·(1-confidence)`.
+- **`hard`** — uses the binary `faithful` column directly (the parsed JSON
+  `0`/`1`).
+- **`soft`** — uses `P(faithful=1)` recovered from the LLM's token-level
+  logprobs. Specifically, the v2 prompt forces the answer to a single digit
+  in JSON; we locate that digit token in the response and renormalize over
+  `{"0", "1"}` from the top-20 logprobs:
+  `P(faithful=1) = exp(lp_1) / (exp(lp_0) + exp(lp_1))`. This number is
+  stored in the `confidence` column of `sentence_scores.*.parquet` (the
+  field name is kept for cache schema compatibility, but the meaning is now
+  "posterior probability of being faithful", not "model self-reported
+  confidence").
 
 `softmin` and `prob_all_faithful` are only meaningful on soft inputs.
 File-level self-tests live at the bottom of `aggregation/methods.py` and

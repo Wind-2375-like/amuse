@@ -71,11 +71,11 @@ def load_sentence_scores(path: Path) -> pd.DataFrame:
     missing = needed - set(df.columns)
     if missing:
         raise ValueError(f"sentence_scores parquet missing columns: {missing}")
-    # P(faithful = 1) under the LLM's self-reported confidence.
-    f = df["faithful"].astype(float).to_numpy()
-    c = df["confidence"].astype(float).to_numpy()
+    # Under prompt v2 the `confidence` column already stores P(faithful=1)
+    # recovered from the LLM's token-level logprobs at the answer digit, so
+    # the soft label is just that value (no f*c+(1-f)*(1-c) recombination).
     df = df.copy()
-    df["p_faithful"] = f * c + (1.0 - f) * (1.0 - c)
+    df["p_faithful"] = df["confidence"].astype(float).clip(0.0, 1.0)
     return df
 
 
