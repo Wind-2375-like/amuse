@@ -243,20 +243,42 @@ parquet is absent.
 
 ### 5.1 Run
 
+The meta-eval script reads **one** sentence-score parquet and the matching
+benchmark parquet (for `human_label` / `origin`). It auto-derives all output
+filenames from the input parquet's stem, so per-benchmark outputs never
+collide.
+
 ```bash
-# Reads one sentence-score parquet + data/aggrefact/aggrefact.parquet.
-# If multiple sentence-score files exist, pass --sentence-scores explicitly.
+# AggreFact-CNN
 python -m eval.run_meta_eval \
-  --sentence-scores results/sentence_scores.Qwen_Qwen3-8B.parquet
+  --sentence-scores results/sentence_scores.Qwen_Qwen3-8B.aggrefact_cnn.parquet \
+  --dataset data/aggrefact_cnn/aggrefact_cnn.parquet
 
-# -> results/{summary_scores.Qwen_Qwen3-8B.parquet,
-#             meta_eval_summary.Qwen_Qwen3-8B.csv,
-#             meta_eval_table.Qwen_Qwen3-8B.md}
+# DiverSumm
+python -m eval.run_meta_eval \
+  --sentence-scores results/sentence_scores.Qwen_Qwen3-8B.diversumm.parquet \
+  --dataset data/diversumm/diversumm.parquet
 
-# Sanity scatter.
+# AggreFact-other-≥2s
+python -m eval.run_meta_eval \
+  --sentence-scores results/sentence_scores.Qwen_Qwen3-8B.aggrefact_other_multi.parquet \
+  --dataset data/aggrefact_other_multi/aggrefact_other_multi.parquet
+```
+
+Each run produces three files; for the first command above:
+
+```
+results/summary_scores.Qwen_Qwen3-8B.aggrefact_cnn.parquet
+results/meta_eval_summary.Qwen_Qwen3-8B.aggrefact_cnn.csv
+results/meta_eval_table.Qwen_Qwen3-8B.aggrefact_cnn.md
+```
+
+Sanity scatter (per-benchmark too):
+
+```bash
 python scripts/plot_agg_vs_human.py \
-  --summary-parquet results/summary_scores.Qwen_Qwen3-8B.parquet
-# -> results/figs/mean_vs_min_scatter.Qwen_Qwen3-8B.png
+  --summary-parquet results/summary_scores.Qwen_Qwen3-8B.aggrefact_cnn.parquet
+# -> results/figs/mean_vs_min_scatter.Qwen_Qwen3-8B.aggrefact_cnn.png
 ```
 
 The whole Phase-2 pipeline finishes in well under a minute on a laptop —
@@ -292,16 +314,25 @@ Each metric is paired with a **percentile bootstrap CI** (`bootstrap_ci`,
 
 ### 5.4 Outputs
 
-- `results/summary_scores.<model_slug>.parquet` — one row per summary, one column per
-  `(aggregation, semantic)` pair, plus `human_label`, `origin`, `n_sent`.
-  Used by the plot script and as the entry point for any downstream analysis.
-- `results/meta_eval_summary.<model_slug>.csv` — long-format table with columns
-  `aggregation, semantic, origin, metric, value, ci_lo, ci_hi, n`.
-- `results/meta_eval_table.<model_slug>.md` — human-readable pivot tables, one block per
-  origin (`AggreFact-CNN`, `AggreFact-XSum`, `__overall__`), each split into
-  `hard` and `soft` sub-tables. CIs that include 0 are flagged with `⁰`.
+All filenames are derived from the input `sentence_scores.<model>.<dataset>.parquet`
+stem, so each benchmark gets its own copy.
 
-### 5.5 Headline numbers (Qwen3-8B, AggreFact-CNN + AggreFact-XSum)
+- `results/summary_scores.<model>.<dataset>.parquet` — one row per summary,
+  one column per `(aggregation, semantic)` pair, plus `human_label`,
+  `origin`, `n_sent`. Used by the plot script and as the entry point for any
+  downstream analysis.
+- `results/meta_eval_summary.<model>.<dataset>.csv` — long-format table with
+  columns `aggregation, semantic, origin, metric, value, ci_lo, ci_hi, n`.
+- `results/meta_eval_table.<model>.<dataset>.md` — human-readable pivot
+  tables, one block per `origin` value found in the benchmark plus an
+  `__overall__` block, each split into `hard` and `soft` sub-tables. CIs that
+  include 0 are flagged with `⁰`.
+
+### 5.5 Headline numbers (Qwen3-8B, AggreFact-CNN + AggreFact-XSum, **stale**)
+
+> ⚠️ These numbers are from the previous CNN+XSum joint run before the
+> Phase-3 benchmark split. They will be replaced once meta-eval has been
+> re-run on each of the three new benchmarks separately.
 
 Spearman ρ with human label, overall (n = 2352), 95 % bootstrap CI:
 
@@ -317,8 +348,8 @@ Spearman ρ with human label, overall (n = 2352), 95 % bootstrap CI:
 | `prob_all_faithful` | —                             | +0.319 [+0.280, +0.363]       |
 
 Best overall Spearman: `trimmed_mean@0.2` on hard inputs (ρ = +0.494).
-See `results/meta_eval_table.Qwen_Qwen3-8B.md` for Pearson / Kendall / ROC-AUC and the
-per-origin breakdown.
+See `results/meta_eval_table.Qwen_Qwen3-8B.<dataset>.md` for Pearson /
+Kendall / ROC-AUC and the per-origin breakdown.
 
 ### 5.6 Caveats from the Phase-2 run
 
@@ -400,11 +431,12 @@ and 8B runs no longer overwrite each other.
 - **Phase 3.** 🟡 In progress.
   - DiverSumm loader + parquet (563 rows, 5 origins, 3–15 sents/summary). ✅
   - AggreFact-other-≥2s pool (644 rows, mostly ExpertQA / RAGTruth). ✅
-  - `score_sentences.py` `--dataset-path` / `--dataset-name` overrides. ✅
-  - Run sentence-level scoring on the two new benchmarks. ⏳
+  - AggreFact-CNN parquet (1017 rows). ✅
+  - `score_sentences.py` `--dataset-path` / `--dataset-name` overrides + per-dataset output naming. ✅
+  - Run sentence-level scoring on all three benchmarks. ⏳
+  - Re-run meta-eval on all three benchmarks; compare aggregation rankings. ⏳
   - Length-normalized `softmin` variant
     (`-τ · (logsumexp(-s/τ) − log N)`). ⏳
-  - Re-run meta-eval on all three benchmarks; compare aggregation rankings. ⏳
 - **Phase 4.** Prompt ablations, confidence-weighted aggregation, model
   scaling sweep (Qwen3 0.6B → 32B).
 
