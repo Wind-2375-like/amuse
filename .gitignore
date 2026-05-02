@@ -31,3 +31,5 @@ results/*.parquet
 data/aggrefact/raw/
 data/aggrefact/*.parquet
 data/aggrefact/*.csv
+data/aggrefact_other_multi/*.parquet
+data/diversumm/*.parquet

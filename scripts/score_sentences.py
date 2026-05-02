@@ -126,14 +126,19 @@ def main() -> None:
                    help="If dataset parquet is missing, use a tiny inline dataset (smoke test only).")
     p.add_argument("--model", default=None, help="Override model_name from config.")
     p.add_argument("--endpoint", default=None, help="Override endpoint from config.")
+    p.add_argument("--dataset-path", default=None,
+                   help="Override `dataset_path` from config (parquet path).")
+    p.add_argument("--dataset-name", default=None,
+                   help="Override `dataset_name` from config (used for cache filename).")
     p.add_argument(
         "--origin",
         nargs="+",
-        default=["AggreFact-CNN", "AggreFact-XSum"],
+        default=["all"],
         help="Keep only rows whose `origin` is in this list. "
-             "lytang/LLM-AggreFact bundles 11 subsets; the real AggreFact is "
-             "AggreFact-CNN + AggreFact-XSum (~2.3k rows). "
-             "Pass --origin all to disable filtering.",
+             "Default 'all' = no filter. Examples: "
+             "'--origin AggreFact-CNN' for the CNN-only benchmark; "
+             "'--origin all' for diversumm or aggrefact_other_multi parquets "
+             "(which are already pre-filtered).",
     )
     p.add_argument(
         "--split",
@@ -148,6 +153,10 @@ def main() -> None:
         cfg["model_name"] = args.model
     if args.endpoint:
         cfg["endpoint"] = args.endpoint
+    if args.dataset_path:
+        cfg["dataset_path"] = args.dataset_path
+    if args.dataset_name:
+        cfg["dataset_name"] = args.dataset_name
     # env-var overrides (helpful for collaborators on different boxes)
     cfg["model_name"] = os.environ.get("MODEL_NAME", cfg["model_name"])
     cfg["endpoint"] = os.environ.get("ENDPOINT", cfg["endpoint"])

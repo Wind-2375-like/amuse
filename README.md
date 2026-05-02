@@ -11,8 +11,9 @@ meta-eval benchmarks).
   scorer. ✅ done.
 - **Phase 2** — aggregation + meta-evaluation (correlation w/ bootstrap CIs)
   on AggreFact-CNN + AggreFact-XSum, plus a sanity scatter plot. ✅ done.
-- **Phase 3 / 4** — additional benchmarks, prompt ablations, model scaling.
-  Not yet started.
+- **Phase 3** — multi-sentence benchmarks (DiverSumm, AggreFact-other-≥2s)
+  added; data pipelines wired up. 🟡 in progress.
+- **Phase 4** — prompt ablations, model scaling. Not yet started.
 
 ---
 
@@ -53,6 +54,8 @@ nlp_project/
 │   └── default.yaml              # model, endpoint, prompt version, cache dir
 ├── data/
 │   ├── aggrefact/                # AggreFact loader (HF -> parquet)
+│   ├── diversumm/                # DiverSumm loader (Infuse CSV -> parquet)
+│   ├── aggrefact_other_multi/    # AggreFact-other-≥2s parquet (built locally)
 │   └── sentences.py              # spaCy sentence splitter w/ offsets
 ├── prompts/
 │   └── sentence_faithfulness_v1.txt
@@ -66,10 +69,12 @@ nlp_project/
 │   ├── metrics.py                # pearson/spearman/kendall/roc_auc + bootstrap_ci
 │   └── run_meta_eval.py          # MAIN PHASE-2 PIPELINE
 ├── scripts/
-│   ├── serve_vllm.sh             # one-line vLLM launcher
-│   ├── load_aggrefact.py         # HF -> data/aggrefact/aggrefact.parquet
-│   ├── score_sentences.py        # PHASE-1 PIPELINE
-│   └── plot_agg_vs_human.py      # sanity scatter (mean vs min)
+│   ├── serve_vllm.sh                  # one-line vLLM launcher
+│   ├── load_aggrefact.py              # HF -> data/aggrefact/aggrefact.parquet
+│   ├── load_diversumm.py              # GitHub CSV -> data/diversumm/diversumm.parquet
+│   ├── build_aggrefact_other_multi.py # filter aggrefact to non-CNN, n_sents>=2
+│   ├── score_sentences.py             # PHASE-1 PIPELINE
+│   └── plot_agg_vs_human.py           # sanity scatter (mean vs min)
 └── results/
     ├── cache/<model_slug>/<dataset>.jsonl   # see §6
     ├── sentence_scores.<model_slug>.parquet # Phase 1 output
@@ -119,19 +124,81 @@ python scripts/score_sentences.py \
 
 ## 4. Phase 1 — sentence-level scoring
 
+We maintain **three** benchmark parquets (see §4.1) and the same
+`scripts/score_sentences.py` pipeline runs against any of them via
+`--dataset-path` / `--dataset-name` overrides.
+
 ```bash
 # Step A — pull AggreFact (once). lytang/LLM-AggreFact is gated; run
 # `huggingface-cli login` first.
 python scripts/load_aggrefact.py --out data/aggrefact/aggrefact.parquet
 
-# Step B — sentence-level scoring (cached, defaults to AggreFact-CNN+XSum).
-python scripts/score_sentences.py
+# Step B — sentence-level scoring (cached, defaults to no origin filter).
+python scripts/score_sentences.py --origin AggreFact-CNN
 # -> results/sentence_scores.Qwen_Qwen3-8B.parquet  (default config)
 ```
 
-The default `--origin AggreFact-CNN AggreFact-XSum` filter is what produces
-the canonical 2,352-summary / 4,654-sentence working set. Pass
-`--origin all` to disable filtering.
+The default `--origin all` keeps every row in whatever parquet is loaded.
+For AggreFact-CNN you must pass `--origin AggreFact-CNN` explicitly; the
+DiverSumm and AggreFact-other-multi parquets are pre-filtered so `all` is
+correct for them.
+
+### 4.1 Three benchmarks
+
+| benchmark             | parquet                                                | rows | sent/summary (mean) | how to build |
+|-----------------------|--------------------------------------------------------|------|--------------------|--------------|
+| **AggreFact-CNN**     | `data/aggrefact/aggrefact.parquet` (filter at runtime) | 1017 | ~3.3 | `load_aggrefact.py` + `--origin AggreFact-CNN` |
+| **DiverSumm**         | `data/diversumm/diversumm.parquet`                     | 563  | 3–15 (origin-dep.) | `load_diversumm.py` |
+| **AggreFact-other-≥2s** | `data/aggrefact_other_multi/aggrefact_other_multi.parquet` | 644  | 2.15 | `build_aggrefact_other_multi.py` |
+
+```bash
+# DiverSumm (downloads CSV from HJZnlp/Infuse on first run).
+python scripts/load_diversumm.py
+
+# AggreFact-other-≥2s: takes ~2 min (sentence-splits all 58k non-CNN rows).
+python scripts/build_aggrefact_other_multi.py
+```
+
+**Why this split?** AggreFact-XSum and most other LLM-AggreFact subsets were
+pre-decomposed by `lytang` into single-claim rows, so aggregation choice has
+no effect on them. Keeping AggreFact-CNN and DiverSumm as standalone
+benchmarks lets each be reported on its own; the catch-all
+`AggreFact-other-≥2s` pool (mostly ExpertQA + RAGTruth, see breakdown below)
+gives a third evaluation surface where aggregation actually matters. The
+original sub-benchmark name is preserved in the `origin` column so per-source
+slicing remains possible downstream.
+
+AggreFact-other-≥2s origin breakdown after filtering:
+
+```
+ExpertQA          357   ClaimVerify       14   Wice              4
+RAGTruth          224   TofuEval-MediaS   11   AggreFact-XSum    1
+Lfqa               19   Reveal             9
+                        TofuEval-MeetB     5
+```
+
+### 4.2 Running scoring per benchmark
+
+```bash
+# 1. AggreFact-CNN
+python scripts/score_sentences.py --origin AggreFact-CNN
+
+# 2. DiverSumm
+python scripts/score_sentences.py \
+    --dataset-path data/diversumm/diversumm.parquet \
+    --dataset-name diversumm \
+    --origin all
+
+# 3. AggreFact-other-≥2s
+python scripts/score_sentences.py \
+    --dataset-path data/aggrefact_other_multi/aggrefact_other_multi.parquet \
+    --dataset-name aggrefact_other_multi \
+    --origin all
+```
+
+Each `--dataset-name` gets its own cache file under
+`results/cache/<model_slug>/<dataset_name>.jsonl`, so the three benchmarks
+share nothing and can be run in parallel.
 
 Output schema (`results/sentence_scores.<model_slug>.parquet`):
 
@@ -317,9 +384,14 @@ and 8B runs no longer overwrite each other.
 - **Phase 2.** ✅ Aggregation registry (`min`/`mean`/`max`/`trimmed_mean`/
   `softmin`/`prob_all_faithful`) + meta-evaluation (Pearson/Spearman/Kendall/
   ROC-AUC with bootstrap CIs) on AggreFact-CNN + AggreFact-XSum.
-- **Phase 3.** Add a multi-sentence faithfulness benchmark (e.g. Frank,
-  DiverSumm) so aggregation actually has something to aggregate on XSum-like
-  data. Add length-normalized `softmin`.
+- **Phase 3.** 🟡 In progress.
+  - DiverSumm loader + parquet (563 rows, 5 origins, 3–15 sents/summary). ✅
+  - AggreFact-other-≥2s pool (644 rows, mostly ExpertQA / RAGTruth). ✅
+  - `score_sentences.py` `--dataset-path` / `--dataset-name` overrides. ✅
+  - Run sentence-level scoring on the two new benchmarks. ⏳
+  - Length-normalized `softmin` variant
+    (`-τ · (logsumexp(-s/τ) − log N)`). ⏳
+  - Re-run meta-eval on all three benchmarks; compare aggregation rankings. ⏳
 - **Phase 4.** Prompt ablations, confidence-weighted aggregation, model
   scaling sweep (Qwen3 0.6B → 32B).
 
