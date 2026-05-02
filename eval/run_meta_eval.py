@@ -174,7 +174,7 @@ def to_markdown(df: pd.DataFrame) -> str:
     for origin in sorted(df["origin"].unique()):
         sub = df[df["origin"] == origin]
         n = int(sub["n"].iloc[0])
-        title = "Overall (AggreFact-CNN + AggreFact-XSum)" if origin == "__overall__" else origin
+        title = "Overall" if origin == "__overall__" else origin
         out.append(f"### {title}  (n_summaries = {n})")
         # rows: aggregation x semantic; cols: metric
         for sem in ["hard", "soft"]:

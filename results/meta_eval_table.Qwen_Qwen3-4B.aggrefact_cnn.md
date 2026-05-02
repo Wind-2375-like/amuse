@@ -24,7 +24,7 @@
 | prob_all_faithful | +0.315 [+0.235, +0.391] | +0.274 [+0.211, +0.338] | +0.247 [+0.191, +0.305] | +0.735 [+0.683, +0.786] |
 
 
-### Overall (AggreFact-CNN + AggreFact-XSum)  (n_summaries = 1017)
+### Overall  (n_summaries = 1017)
 
 **Input semantic: `hard`**
 
