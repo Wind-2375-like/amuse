@@ -248,7 +248,7 @@ def main() -> None:
         default=None,
         help="Sentence-level parquet from scripts/score_sentences.py. Required when multiple model-specific files exist.",
     )
-    p.add_argument("--dataset", default="data/aggrefact/aggrefact.parquet")
+    p.add_argument("--dataset", default="data/aggrefact_cnn/aggrefact_cnn.parquet")
     p.add_argument("--out-csv", default=None)
     p.add_argument("--out-md", default=None)
     p.add_argument("--out-summary-parquet",
