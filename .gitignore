@@ -33,3 +33,4 @@ data/aggrefact/*.parquet
 data/aggrefact/*.csv
 data/aggrefact_other_multi/*.parquet
 data/diversumm/*.parquet
+data/aggrefact_cnn/*.parquet

@@ -53,7 +53,8 @@ nlp_project/
 ├── configs/
 │   └── default.yaml              # model, endpoint, prompt version, cache dir
 ├── data/
-│   ├── aggrefact/                # AggreFact loader (HF -> parquet)
+│   ├── aggrefact/                # AggreFact loader (HF -> parquet, all 11 origins)
+│   ├── aggrefact_cnn/            # AggreFact-CNN parquet (built locally)
 │   ├── diversumm/                # DiverSumm loader (Infuse CSV -> parquet)
 │   ├── aggrefact_other_multi/    # AggreFact-other-≥2s parquet (built locally)
 │   └── sentences.py              # spaCy sentence splitter w/ offsets
@@ -71,17 +72,18 @@ nlp_project/
 ├── scripts/
 │   ├── serve_vllm.sh                  # one-line vLLM launcher
 │   ├── load_aggrefact.py              # HF -> data/aggrefact/aggrefact.parquet
+│   ├── build_aggrefact_cnn.py         # filter aggrefact to origin == AggreFact-CNN
 │   ├── load_diversumm.py              # GitHub CSV -> data/diversumm/diversumm.parquet
 │   ├── build_aggrefact_other_multi.py # filter aggrefact to non-CNN, n_sents>=2
 │   ├── score_sentences.py             # PHASE-1 PIPELINE
 │   └── plot_agg_vs_human.py           # sanity scatter (mean vs min)
 └── results/
-    ├── cache/<model_slug>/<dataset>.jsonl   # see §6
-    ├── sentence_scores.<model_slug>.parquet # Phase 1 output
-    ├── summary_scores.<model_slug>.parquet  # Phase 2 per-summary aggregates
-    ├── meta_eval_summary.<model_slug>.csv   # Phase 2 long-format results
-    ├── meta_eval_table.<model_slug>.md      # Phase 2 human-readable tables
-    └── figs/mean_vs_min_scatter.png         # Phase 2 sanity plot
+    ├── cache/<model_slug>/<dataset_name>.jsonl       # see §6
+    ├── sentence_scores.<model_slug>.<dataset_name>.parquet  # Phase 1 output
+    ├── summary_scores.<model_slug>.parquet           # Phase 2 per-summary aggregates
+    ├── meta_eval_summary.<model_slug>.csv            # Phase 2 long-format results
+    ├── meta_eval_table.<model_slug>.md               # Phase 2 human-readable tables
+    └── figs/mean_vs_min_scatter.png                  # Phase 2 sanity plot
 ```
 
 ---
@@ -125,39 +127,38 @@ python scripts/score_sentences.py \
 ## 4. Phase 1 — sentence-level scoring
 
 We maintain **three** benchmark parquets (see §4.1) and the same
-`scripts/score_sentences.py` pipeline runs against any of them via
-`--dataset-path` / `--dataset-name` overrides.
+`scripts/score_sentences.py` pipeline runs against any of them via a
+uniform `--dataset-path` / `--dataset-name` pair.
 
 ```bash
 # Step A — pull AggreFact (once). lytang/LLM-AggreFact is gated; run
 # `huggingface-cli login` first.
 python scripts/load_aggrefact.py --out data/aggrefact/aggrefact.parquet
 
-# Step B — sentence-level scoring (cached, defaults to no origin filter).
-python scripts/score_sentences.py --origin AggreFact-CNN
-# -> results/sentence_scores.Qwen_Qwen3-8B.parquet  (default config)
+# Step B — build the three benchmark parquets.
+python scripts/build_aggrefact_cnn.py          # -> data/aggrefact_cnn/aggrefact_cnn.parquet
+python scripts/load_diversumm.py               # -> data/diversumm/diversumm.parquet
+python scripts/build_aggrefact_other_multi.py  # -> data/aggrefact_other_multi/aggrefact_other_multi.parquet
+
+# Step C — sentence-level scoring (cached, per-dataset cache + output file).
+python scripts/score_sentences.py \
+    --dataset-path data/aggrefact_cnn/aggrefact_cnn.parquet \
+    --dataset-name aggrefact_cnn
+# -> results/sentence_scores.Qwen_Qwen3-8B.aggrefact_cnn.parquet
 ```
 
-The default `--origin all` keeps every row in whatever parquet is loaded.
-For AggreFact-CNN you must pass `--origin AggreFact-CNN` explicitly; the
-DiverSumm and AggreFact-other-multi parquets are pre-filtered so `all` is
-correct for them.
+The default `--origin all` keeps every row. Both `--dataset-name` and the
+model slug appear in the output parquet path *and* the cache path, so
+running the same model across all three benchmarks produces three independent
+files — nothing overwrites anything.
 
 ### 4.1 Three benchmarks
 
-| benchmark             | parquet                                                | rows | sent/summary (mean) | how to build |
+| benchmark             | parquet                                                | rows | sent/summary (mean) | builder |
 |-----------------------|--------------------------------------------------------|------|--------------------|--------------|
-| **AggreFact-CNN**     | `data/aggrefact/aggrefact.parquet` (filter at runtime) | 1017 | ~3.3 | `load_aggrefact.py` + `--origin AggreFact-CNN` |
+| **AggreFact-CNN**     | `data/aggrefact_cnn/aggrefact_cnn.parquet`             | 1017 | ~3.3 | `build_aggrefact_cnn.py` |
 | **DiverSumm**         | `data/diversumm/diversumm.parquet`                     | 563  | 3–15 (origin-dep.) | `load_diversumm.py` |
 | **AggreFact-other-≥2s** | `data/aggrefact_other_multi/aggrefact_other_multi.parquet` | 644  | 2.15 | `build_aggrefact_other_multi.py` |
-
-```bash
-# DiverSumm (downloads CSV from HJZnlp/Infuse on first run).
-python scripts/load_diversumm.py
-
-# AggreFact-other-≥2s: takes ~2 min (sentence-splits all 58k non-CNN rows).
-python scripts/build_aggrefact_other_multi.py
-```
 
 **Why this split?** AggreFact-XSum and most other LLM-AggreFact subsets were
 pre-decomposed by `lytang` into single-claim rows, so aggregation choice has
@@ -179,26 +180,38 @@ Lfqa               19   Reveal             9
 
 ### 4.2 Running scoring per benchmark
 
+Same three flags every time — only the two paths change:
+
 ```bash
+MODEL=Qwen/Qwen3-8B  # or whatever
+
 # 1. AggreFact-CNN
-python scripts/score_sentences.py --origin AggreFact-CNN
+python scripts/score_sentences.py \
+    --dataset-path data/aggrefact_cnn/aggrefact_cnn.parquet \
+    --dataset-name aggrefact_cnn
 
 # 2. DiverSumm
 python scripts/score_sentences.py \
     --dataset-path data/diversumm/diversumm.parquet \
-    --dataset-name diversumm \
-    --origin all
+    --dataset-name diversumm
 
 # 3. AggreFact-other-≥2s
 python scripts/score_sentences.py \
     --dataset-path data/aggrefact_other_multi/aggrefact_other_multi.parquet \
-    --dataset-name aggrefact_other_multi \
-    --origin all
+    --dataset-name aggrefact_other_multi
 ```
 
-Each `--dataset-name` gets its own cache file under
-`results/cache/<model_slug>/<dataset_name>.jsonl`, so the three benchmarks
-share nothing and can be run in parallel.
+For model `Qwen/Qwen3-8B` you'd get six files (one cache + one output per
+benchmark):
+
+```
+results/cache/Qwen_Qwen3-8B/aggrefact_cnn.jsonl
+results/cache/Qwen_Qwen3-8B/diversumm.jsonl
+results/cache/Qwen_Qwen3-8B/aggrefact_other_multi.jsonl
+results/sentence_scores.Qwen_Qwen3-8B.aggrefact_cnn.parquet
+results/sentence_scores.Qwen_Qwen3-8B.diversumm.parquet
+results/sentence_scores.Qwen_Qwen3-8B.aggrefact_other_multi.parquet
+```
 
 Output schema (`results/sentence_scores.<model_slug>.parquet`):
 

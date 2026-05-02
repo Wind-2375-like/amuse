@@ -45,8 +45,11 @@ def _slugify(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]+", "_", name).strip("_")
 
 
-def _default_output_path(model_name: str) -> Path:
-    return Path("results") / f"sentence_scores.{_slugify(model_name)}.parquet"
+def _default_output_path(model_name: str, dataset_name: str) -> Path:
+    return (
+        Path("results")
+        / f"sentence_scores.{_slugify(model_name)}.{_slugify(dataset_name)}.parquet"
+    )
 
 
 def _maybe_load_dataset(cfg: dict, fallback_inline: bool) -> pd.DataFrame:
@@ -227,7 +230,7 @@ def main() -> None:
     elapsed = time.time() - t0
     out_df = pd.DataFrame(rows)
     out_path = (
-        _default_output_path(evaluator.model_name)
+        _default_output_path(evaluator.model_name, cfg.get("dataset_name", "aggrefact"))
         if args.out == "results/sentence_scores.parquet"
         else Path(args.out)
     )
