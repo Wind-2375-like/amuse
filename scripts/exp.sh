@@ -7,6 +7,7 @@ MODEL_NAME=$1
 # Mapping
 # qwen-3-4b -> Qwen/Qwen3-4B
 # qwen-3-8b -> Qwen/Qwen3-8B
+# qwen-3-32b -> Qwen/Qwen3-32B
 # olmo-3-7b -> allenai/Olmo-3-7B
 # llama-3.1-8b -> meta-llama/Llama-3.1-8B-Instruct
 
@@ -14,6 +15,8 @@ if [ "$MODEL_NAME" == "qwen-3-4b" ]; then
   MODEL_NAME="Qwen/Qwen3-4B"
 elif [ "$MODEL_NAME" == "qwen-3-8b" ]; then
   MODEL_NAME="Qwen/Qwen3-8B"
+elif [ "$MODEL_NAME" == "qwen-3-32b" ]; then
+  MODEL_NAME="Qwen/Qwen3-32B"
 elif [ "$MODEL_NAME" == "olmo-3-7b" ]; then
   MODEL_NAME="allenai/Olmo-3-7B-Instruct"
 elif [ "$MODEL_NAME" == "llama-3.1-8b" ]; then
