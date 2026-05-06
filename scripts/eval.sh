@@ -26,14 +26,18 @@ else
   exit 1
 fi
 
-python -m eval.run_meta_eval \
-  --sentence-scores results/sentence_scores.$MODEL_NAME.aggrefact_cnn.parquet \
-  --dataset data/aggrefact_cnn/aggrefact_cnn.parquet
+# python -m eval.run_meta_eval \
+#  --sentence-scores results/sentence_scores.$MODEL_NAME.aggrefact_cnn.parquet \
+#  --dataset data/aggrefact_cnn/aggrefact_cnn.parquet
+
+# python -m eval.run_meta_eval \
+#  --sentence-scores results/sentence_scores.$MODEL_NAME.diversumm.parquet \
+#  --dataset data/diversumm/diversumm.parquet
+
+# python -m eval.run_meta_eval \
+#  --sentence-scores results/sentence_scores.$MODEL_NAME.aggrefact_other_multi.parquet \
+#  --dataset data/aggrefact_other_multi/aggrefact_other_multi.parquet
 
 python -m eval.run_meta_eval \
-  --sentence-scores results/sentence_scores.$MODEL_NAME.diversumm.parquet \
-  --dataset data/diversumm/diversumm.parquet
-
-python -m eval.run_meta_eval \
-  --sentence-scores results/sentence_scores.$MODEL_NAME.aggrefact_other_multi.parquet \
-  --dataset data/aggrefact_other_multi/aggrefact_other_multi.parquet
+  --sentence-scores results/sentence_scores.$MODEL_NAME.halueval.parquet \
+  --dataset data/halueval/halueval.parquet
