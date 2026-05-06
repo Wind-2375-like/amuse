@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Start a vLLM OpenAI-compatible server for sentence-faithfulness scoring.
 #
-# Defaults: Qwen/Qwen3-8B, bf16, port 8000, 8K context, 1 GPU.
+# Defaults: Qwen/Qwen3-8B, bf16, port 8000, 16K context, 1 GPU.
 # Override via env vars, e.g.:
 #   MODEL=Qwen/Qwen3-1.7B PORT=8001 ./scripts/serve_vllm.sh
 #
@@ -13,7 +13,7 @@ MODEL="${MODEL:-Qwen/Qwen3-8B}"
 PORT="${PORT:-8000}"
 HOST="${HOST:-0.0.0.0}"
 DTYPE="${DTYPE:-bfloat16}"
-MAX_LEN="${MAX_LEN:-8192}"
+MAX_LEN="${MAX_LEN:-16384}"
 GPU_UTIL="${GPU_UTIL:-0.90}"
 TP="${TP:-1}"
 

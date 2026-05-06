@@ -1,17 +1,20 @@
-# NLP Project — Aggregation Methods for LLM-based Summary Faithfulness Evaluation
+# NLP Project — Aggregation Methods for Understanding Summary-Faithfulness Evaluation
+
+AMUSE: **A**ggregation **M**ethods for **U**nderstanding **S**ummary-Faithfulness **E**valuation
 
 **Research question.** When an LLM evaluates summary faithfulness sentence by
 sentence, how should those per-sentence judgements be aggregated into a
 summary-level score? We compare `min` / `mean` / `max` / softmin / trimmed
-mean / `prob_all_faithful` against human labels on AggreFact (and later other
-meta-eval benchmarks).
+mean / `prob_all_faithful` against human labels on AggreFact and other
+meta-eval benchmarks.
 
 **Status.**
 - **Phase 1** — data loading, sentence splitting, cached sentence-level LLM
   scorer. ✅ done.
 - **Phase 2** — aggregation + meta-evaluation (correlation w/ bootstrap CIs)
   on AggreFact-CNN + AggreFact-XSum, plus a sanity scatter plot. ✅ done.
-- **Phase 3** — multi-sentence benchmarks (DiverSumm, AggreFact-other-≥2s)
+- **Phase 3** — multi-sentence benchmarks (DiverSumm, AggreFact-other-≥2s,
+  HaluEval)
   added; data pipelines wired up. 🟡 in progress.
 - **Phase 4** — prompt ablations, model scaling. Not yet started.
 
@@ -57,6 +60,7 @@ nlp_project/
 │   ├── aggrefact_cnn/            # AggreFact-CNN parquet (built locally)
 │   ├── diversumm/                # DiverSumm loader (Infuse CSV -> parquet)
 │   ├── aggrefact_other_multi/    # AggreFact-other-≥2s parquet (built locally)
+│   ├── halueval/                 # HaluEval summarization parquet (built locally)
 │   └── sentences.py              # spaCy sentence splitter w/ offsets
 ├── prompts/
 │   └── sentence_faithfulness_v1.txt
@@ -75,6 +79,7 @@ nlp_project/
 │   ├── build_aggrefact_cnn.py         # filter aggrefact to origin == AggreFact-CNN
 │   ├── load_diversumm.py              # GitHub CSV -> data/diversumm/diversumm.parquet
 │   ├── build_aggrefact_other_multi.py # filter aggrefact to non-CNN, n_sents>=2
+│   ├── build_halueval.py              # HaluEval JSON -> data/halueval/halueval.parquet
 │   ├── score_sentences.py             # PHASE-1 PIPELINE
 │   └── plot_agg_vs_human.py           # sanity scatter (mean vs min)
 └── results/
@@ -91,7 +96,7 @@ nlp_project/
 ## 3. Running the LLM (vLLM, OpenAI-compatible)
 
 We treat the LLM as an OpenAI-compatible HTTP server. The default is
-`Qwen/Qwen3-8B` in bf16 on a single A100-80GB.
+`Qwen/Qwen3-8B` in bf16 on a single A100-80GB with a 16K context window.
 
 ```bash
 # On the GPU box (needs `pip install -e '.[serve]'`):
@@ -126,7 +131,7 @@ python scripts/score_sentences.py \
 
 ## 4. Phase 1 — sentence-level scoring
 
-We maintain **three** benchmark parquets (see §4.1) and the same
+We maintain **four** benchmark parquets (see §4.1) and the same
 `scripts/score_sentences.py` pipeline runs against any of them via a
 uniform `--dataset-path` / `--dataset-name` pair.
 
@@ -135,10 +140,12 @@ uniform `--dataset-path` / `--dataset-name` pair.
 # `huggingface-cli login` first.
 python scripts/load_aggrefact.py --out data/aggrefact/aggrefact.parquet
 
-# Step B — build the three benchmark parquets.
+# Step B — build the benchmark parquets.
 python scripts/build_aggrefact_cnn.py          # -> data/aggrefact_cnn/aggrefact_cnn.parquet
 python scripts/load_diversumm.py               # -> data/diversumm/diversumm.parquet
 python scripts/build_aggrefact_other_multi.py  # -> data/aggrefact_other_multi/aggrefact_other_multi.parquet
+python scripts/build_halueval.py               # -> data/halueval/halueval.parquet
+```
 
 # Step C — sentence-level scoring (cached, per-dataset cache + output file).
 python scripts/score_sentences.py \
@@ -149,16 +156,24 @@ python scripts/score_sentences.py \
 
 The default `--origin all` keeps every row. Both `--dataset-name` and the
 model slug appear in the output parquet path *and* the cache path, so
-running the same model across all three benchmarks produces three independent
+running the same model across all four benchmarks produces four independent
 files — nothing overwrites anything.
 
-### 4.1 Three benchmarks
+### 4.1 Four benchmarks
 
 | benchmark             | parquet                                                | rows | sent/summary (mean) | builder |
 |-----------------------|--------------------------------------------------------|------|--------------------|--------------|
 | **AggreFact-CNN**     | `data/aggrefact_cnn/aggrefact_cnn.parquet`             | 1017 | ~3.3 | `build_aggrefact_cnn.py` |
 | **DiverSumm**         | `data/diversumm/diversumm.parquet`                     | 563  | 3–15 (origin-dep.) | `load_diversumm.py` |
 | **AggreFact-other-≥2s** | `data/aggrefact_other_multi/aggrefact_other_multi.parquet` | 644  | 2.15 | `build_aggrefact_other_multi.py` |
+| **HaluEval**          | `data/halueval/halueval.parquet`                       | 20000 derived rows from 10K source records | ~2.5 | `build_halueval.py` |
+
+The original HaluEval summarization release contains 10K records. Each record
+includes both `right_summary` and `hallucinated_summary`; AMUSE expands that
+into two parquet rows per source record so sentence scoring and meta-eval can
+run on both candidate summaries. That derived parquet therefore contains 20K
+rows, but the original dataset does not separately list "10K faithful samples"
+as its own file.
 
 **Why this split?** AggreFact-XSum and most other LLM-AggreFact subsets were
 pre-decomposed by `lytang` into single-claim rows, so aggregation choice has
@@ -199,18 +214,25 @@ python scripts/score_sentences.py \
 python scripts/score_sentences.py \
     --dataset-path data/aggrefact_other_multi/aggrefact_other_multi.parquet \
     --dataset-name aggrefact_other_multi
+
+# 4. HaluEval
+python scripts/score_sentences.py \
+  --dataset-path data/halueval/halueval.parquet \
+  --dataset-name halueval
 ```
 
-For model `Qwen/Qwen3-8B` you'd get six files (one cache + one output per
+For model `Qwen/Qwen3-8B` you'd get eight files (one cache + one output per
 benchmark):
 
 ```
 results/cache/Qwen_Qwen3-8B/aggrefact_cnn.jsonl
 results/cache/Qwen_Qwen3-8B/diversumm.jsonl
 results/cache/Qwen_Qwen3-8B/aggrefact_other_multi.jsonl
+results/cache/Qwen_Qwen3-8B/halueval.jsonl
 results/sentence_scores.Qwen_Qwen3-8B.aggrefact_cnn.parquet
 results/sentence_scores.Qwen_Qwen3-8B.diversumm.parquet
 results/sentence_scores.Qwen_Qwen3-8B.aggrefact_other_multi.parquet
+results/sentence_scores.Qwen_Qwen3-8B.halueval.parquet
 ```
 
 Output schema (`results/sentence_scores.<model_slug>.parquet`):
@@ -263,6 +285,11 @@ python -m eval.run_meta_eval \
 python -m eval.run_meta_eval \
   --sentence-scores results/sentence_scores.Qwen_Qwen3-8B.aggrefact_other_multi.parquet \
   --dataset data/aggrefact_other_multi/aggrefact_other_multi.parquet
+
+# HaluEval
+python -m eval.run_meta_eval \
+  --sentence-scores results/sentence_scores.Qwen_Qwen3-8B.halueval.parquet \
+  --dataset data/halueval/halueval.parquet
 ```
 
 Each run produces three files; for the first command above:

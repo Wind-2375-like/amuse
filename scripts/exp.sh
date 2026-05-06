@@ -26,17 +26,22 @@ else
   exit 1
 fi
 
-python scripts/score_sentences.py \
-    --dataset-path data/aggrefact_cnn/aggrefact_cnn.parquet \
-    --dataset-name aggrefact_cnn \
-    --model $MODEL_NAME
+# python scripts/score_sentences.py \
+#     --dataset-path data/aggrefact_cnn/aggrefact_cnn.parquet \
+#     --dataset-name aggrefact_cnn \
+#     --model $MODEL_NAME
+
+# python scripts/score_sentences.py \
+#     --dataset-path data/diversumm/diversumm.parquet \
+#     --dataset-name diversumm \
+#     --model $MODEL_NAME
+
+# python scripts/score_sentences.py \
+#     --dataset-path data/aggrefact_other_multi/aggrefact_other_multi.parquet \
+#     --dataset-name aggrefact_other_multi \
+#     --model $MODEL_NAME
 
 python scripts/score_sentences.py \
-    --dataset-path data/diversumm/diversumm.parquet \
-    --dataset-name diversumm \
-    --model $MODEL_NAME
-
-python scripts/score_sentences.py \
-    --dataset-path data/aggrefact_other_multi/aggrefact_other_multi.parquet \
-    --dataset-name aggrefact_other_multi \
+    --dataset-path data/halueval/halueval.parquet \
+    --dataset-name halueval \
     --model $MODEL_NAME

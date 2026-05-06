@@ -9,6 +9,9 @@ endpoint: "http://localhost:8000/v1"
 api_key: "EMPTY"   # vLLM ignores this but the openai client requires a non-empty string
 
 # --- Generation ---
+# Total served context window (input + output). Keep this aligned with the
+# vLLM server's --max-model-len so we can skip oversized prompts locally.
+max_model_len: 16384
 max_tokens: 512
 temperature: 0.0
 top_p: 1.0

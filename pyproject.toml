@@ -19,7 +19,8 @@ dependencies = [
     "pyarrow>=15.0",
     "scipy>=1.15.3",
     "scikit-learn>=1.7.2",
-    "matplotlib>=3.10.9"
+    "matplotlib>=3.10.9",
+    "transformers>=4.48"
 ]
 
 [project.optional-dependencies]

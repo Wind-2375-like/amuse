@@ -172,6 +172,9 @@ class OpenAICompatEvaluator(SentenceEvaluator):
             "{sentence}", sentence
         )
 
+    def build_prompt(self, document: str, sentence: str) -> str:
+        return self._build_prompt(document, sentence)
+
     def score_sentence(self, document: str, sentence: str) -> SentenceScore:
         prompt = self._build_prompt(document, sentence)
         last_raw = ""

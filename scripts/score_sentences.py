@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from transformers import AutoTokenizer
 import yaml
 from tqdm import tqdm
 
@@ -53,7 +54,7 @@ def _default_output_path(model_name: str, dataset_name: str) -> Path:
 
 
 def _maybe_load_dataset(cfg: dict, fallback_inline: bool) -> pd.DataFrame:
-    """Try to load the AggreFact parquet. If missing AND --mock with
+    """Try to load the configured dataset parquet. If missing AND --mock with
     `fallback_inline=True`, return a tiny inline frame so we can prove the
     pipeline end-to-end without HF access."""
     path = Path(cfg["dataset_path"])
@@ -61,7 +62,7 @@ def _maybe_load_dataset(cfg: dict, fallback_inline: bool) -> pd.DataFrame:
         return pd.read_parquet(path)
     if not fallback_inline:
         raise FileNotFoundError(
-            f"Dataset not found at {path}. Run scripts/load_aggrefact.py first."
+            f"Dataset not found at {path}. Build or download the matching dataset parquet first."
         )
     print(f"[score_sentences] {path} missing — using inline fallback dataset.", flush=True)
     return _inline_fallback()
@@ -117,6 +118,24 @@ def _inline_fallback() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _count_chat_tokens(tokenizer: Any, prompt: str, enable_thinking: bool) -> int:
+    messages = [{"role": "user", "content": prompt}]
+    try:
+        token_ids = tokenizer.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=True,
+            enable_thinking=enable_thinking,
+        )
+    except TypeError:
+        token_ids = tokenizer.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=True,
+        )
+    return len(token_ids)
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--config", default="configs/default.yaml")
@@ -133,6 +152,12 @@ def main() -> None:
                    help="Override `dataset_path` from config (parquet path).")
     p.add_argument("--dataset-name", default=None,
                    help="Override `dataset_name` from config (used for cache filename).")
+    p.add_argument(
+        "--max-model-len",
+        type=int,
+        default=None,
+        help="Override `max_model_len` from config for local prompt-length filtering.",
+    )
     p.add_argument(
         "--origin",
         nargs="+",
@@ -160,9 +185,14 @@ def main() -> None:
         cfg["dataset_path"] = args.dataset_path
     if args.dataset_name:
         cfg["dataset_name"] = args.dataset_name
+    if args.max_model_len is not None:
+        cfg["max_model_len"] = args.max_model_len
     # env-var overrides (helpful for collaborators on different boxes)
     cfg["model_name"] = os.environ.get("MODEL_NAME", cfg["model_name"])
     cfg["endpoint"] = os.environ.get("ENDPOINT", cfg["endpoint"])
+    cfg["max_model_len"] = int(
+        os.environ.get("MAX_MODEL_LEN", cfg.get("max_model_len", 0))
+    )
 
     fallback_inline = args.mock or args.inline_fallback
     df = _maybe_load_dataset(cfg, fallback_inline=fallback_inline)
@@ -194,9 +224,30 @@ def main() -> None:
     )
     print(f"[score_sentences] cache file: {cached.cache_path} (loaded {len(cached.cache)} entries)")
 
+    prompt_token_budget = None
+    tokenizer = None
+    if isinstance(evaluator, OpenAICompatEvaluator):
+        max_model_len = int(cfg.get("max_model_len", 0))
+        if max_model_len <= 0:
+            raise ValueError("cfg.max_model_len must be set for OpenAI-compatible runs.")
+        prompt_token_budget = max_model_len - int(cfg.get("max_tokens", 0))
+        if prompt_token_budget <= 0:
+            raise ValueError(
+                f"max_model_len={max_model_len} must exceed max_tokens={cfg.get('max_tokens', 0)}"
+            )
+        tokenizer = AutoTokenizer.from_pretrained(
+            evaluator.model_name,
+            trust_remote_code=True,
+        )
+        print(
+            "[score_sentences] prompt budget: "
+            f"input<={prompt_token_budget} tokens, output<={cfg.get('max_tokens', 0)} tokens"
+        )
+
     rows = []
     n_calls = 0
     n_hits = 0
+    n_skipped_too_long = 0
     t0 = time.time()
     for i, r in tqdm(df.iterrows(), total=len(df), desc="docs"):
         document = r["document"]
@@ -206,6 +257,16 @@ def main() -> None:
         summary_id = f"{doc_id}::{r.get('model', 'm')}"
         sents = split_sentences(summary, model=cfg.get("spacy_model", "en_core_web_sm"))
         for sent in sents:
+            if tokenizer is not None and prompt_token_budget is not None:
+                prompt = evaluator.build_prompt(document, sent.text)
+                prompt_tokens = _count_chat_tokens(
+                    tokenizer,
+                    prompt,
+                    enable_thinking=getattr(evaluator, "enable_thinking", False),
+                )
+                if prompt_tokens > prompt_token_budget:
+                    n_skipped_too_long += 1
+                    continue
             score, hit = cached.score(document, summary, sent.idx, sent.text)
             n_hits += int(hit)
             n_calls += int(not hit)
@@ -238,7 +299,8 @@ def main() -> None:
     out_df.to_parquet(out_path, index=False)
     print(
         f"[score_sentences] done. sentences={len(out_df)} "
-        f"cache_hits={n_hits} new_calls={n_calls} elapsed={elapsed:.1f}s -> {out_path}"
+        f"cache_hits={n_hits} new_calls={n_calls} skipped_too_long={n_skipped_too_long} "
+        f"elapsed={elapsed:.1f}s -> {out_path}"
     )
     if len(out_df):
         cols = ["doc_id", "sent_idx", "faithful", "confidence", "sent_text"]
