@@ -14,6 +14,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import os
 import re
 import sys
@@ -136,6 +137,85 @@ def _count_chat_tokens(tokenizer: Any, prompt: str, enable_thinking: bool) -> in
     return len(token_ids)
 
 
+def _iter_sentence_tasks(
+    df: pd.DataFrame,
+    cfg: dict[str, Any],
+    evaluator: Any,
+    tokenizer: Any,
+    prompt_token_budget: int | None,
+    stats: dict[str, int],
+):
+    for doc_idx, row in df.iterrows():
+        document = row["document"]
+        summary = row["summary"]
+        doc_id = row["doc_id"]
+        summary_id = f"{doc_id}::{row.get('model', 'm')}"
+        yielded_for_doc = False
+        sents = split_sentences(summary, model=cfg.get("spacy_model", "en_core_web_sm"))
+        for sent in sents:
+            if tokenizer is not None and prompt_token_budget is not None:
+                prompt = evaluator.build_prompt(document, sent.text)
+                prompt_tokens = _count_chat_tokens(
+                    tokenizer,
+                    prompt,
+                    enable_thinking=getattr(evaluator, "enable_thinking", False),
+                )
+                if prompt_tokens > prompt_token_budget:
+                    stats["skipped_too_long"] += 1
+                    continue
+            yielded_for_doc = True
+            yield {
+                "doc_idx": int(doc_idx),
+                "doc_id": doc_id,
+                "summary_id": summary_id,
+                "document": document,
+                "summary": summary,
+                "sent_idx": sent.idx,
+                "sent_text": sent.text,
+                "origin": row.get("origin", ""),
+                "split": row.get("split", ""),
+                "human_label": row.get("human_label", None),
+            }
+        if not yielded_for_doc:
+            stats.setdefault("empty_docs", 0)
+            stats["empty_docs"] += 1
+
+
+def _score_task(task: dict[str, Any], cached: CachedEvaluator, evaluator: Any) -> tuple[dict[str, Any], bool]:
+    score, hit = cached.score(
+        task["document"],
+        task["summary"],
+        task["sent_idx"],
+        task["sent_text"],
+    )
+    row = {
+        "doc_id": task["doc_id"],
+        "summary_id": task["summary_id"],
+        "sent_idx": task["sent_idx"],
+        "sent_text": task["sent_text"],
+        "faithful": int(score.faithful),
+        "confidence": float(score.confidence),
+        "reason": score.reason,
+        "raw_response": score.raw_response,
+        "parse_failed": bool(score.parse_failed),
+        "model_name": evaluator.model_name,
+        "prompt_version": evaluator.prompt_version,
+        "origin": task["origin"],
+        "split": task["split"],
+        "human_label": task["human_label"],
+    }
+    return row, hit
+
+
+def _score_task_with_task(
+    task: dict[str, Any],
+    cached: CachedEvaluator,
+    evaluator: Any,
+) -> tuple[dict[str, Any], dict[str, Any], bool]:
+    row, hit = _score_task(task, cached, evaluator)
+    return task, row, hit
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--config", default="configs/default.yaml")
@@ -173,6 +253,12 @@ def main() -> None:
         nargs="+",
         default=None,
         help="Keep only these splits (e.g. test). Default: all splits in the parquet.",
+    )
+    p.add_argument(
+        "--workers",
+        type=int,
+        default=int(os.environ.get("SCORE_WORKERS", "1")),
+        help="Concurrent in-flight sentence requests for OpenAI-compatible backends.",
     )
     args = p.parse_args()
 
@@ -223,6 +309,7 @@ def main() -> None:
         dataset=cfg.get("dataset_name", "aggrefact"),
     )
     print(f"[score_sentences] cache file: {cached.cache_path} (loaded {len(cached.cache)} entries)")
+    print(f"[score_sentences] workers: {args.workers}")
 
     prompt_token_budget = None
     tokenizer = None
@@ -249,43 +336,68 @@ def main() -> None:
     n_hits = 0
     n_skipped_too_long = 0
     t0 = time.time()
-    for i, r in tqdm(df.iterrows(), total=len(df), desc="docs"):
-        document = r["document"]
-        summary = r["summary"]
-        doc_id = r["doc_id"]
-        # summary_id: stable per (doc_id, summary)
-        summary_id = f"{doc_id}::{r.get('model', 'm')}"
-        sents = split_sentences(summary, model=cfg.get("spacy_model", "en_core_web_sm"))
-        for sent in sents:
-            if tokenizer is not None and prompt_token_budget is not None:
-                prompt = evaluator.build_prompt(document, sent.text)
-                prompt_tokens = _count_chat_tokens(
-                    tokenizer,
-                    prompt,
-                    enable_thinking=getattr(evaluator, "enable_thinking", False),
-                )
-                if prompt_tokens > prompt_token_budget:
-                    n_skipped_too_long += 1
-                    continue
-            score, hit = cached.score(document, summary, sent.idx, sent.text)
-            n_hits += int(hit)
-            n_calls += int(not hit)
-            rows.append({
-                "doc_id": doc_id,
-                "summary_id": summary_id,
-                "sent_idx": sent.idx,
-                "sent_text": sent.text,
-                "faithful": int(score.faithful),
-                "confidence": float(score.confidence),
-                "reason": score.reason,
-                "raw_response": score.raw_response,
-                "parse_failed": bool(score.parse_failed),
-                "model_name": evaluator.model_name,
-                "prompt_version": evaluator.prompt_version,
-                "origin": r.get("origin", ""),
-                "split": r.get("split", ""),
-                "human_label": r.get("human_label", None),
-            })
+    task_stats = {"skipped_too_long": 0}
+    task_iter = _iter_sentence_tasks(
+        df,
+        cfg,
+        evaluator,
+        tokenizer,
+        prompt_token_budget,
+        task_stats,
+    )
+    progress = tqdm(total=len(df), desc="docs")
+    try:
+        if args.workers <= 1 or args.mock:
+            last_doc_idx = None
+            for task in task_iter:
+                row, hit = _score_task(task, cached, evaluator)
+                n_hits += int(hit)
+                n_calls += int(not hit)
+                rows.append(row)
+                if task["doc_idx"] != last_doc_idx:
+                    progress.update(1)
+                    last_doc_idx = task["doc_idx"]
+        else:
+            max_pending = max(args.workers * 4, args.workers)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
+                pending: set[concurrent.futures.Future] = set()
+                doc_pending_counts: dict[int, int] = {}
+                completed_docs: set[int] = set()
+
+                def drain(done_futures):
+                    nonlocal n_hits, n_calls
+                    for future in done_futures:
+                        task, row, hit = future.result()
+                        n_hits += int(hit)
+                        n_calls += int(not hit)
+                        rows.append(row)
+                        doc_idx = task["doc_idx"]
+                        remaining = doc_pending_counts[doc_idx] - 1
+                        doc_pending_counts[doc_idx] = remaining
+                        if remaining == 0 and doc_idx not in completed_docs:
+                            completed_docs.add(doc_idx)
+                            progress.update(1)
+
+                for task in task_iter:
+                    doc_idx = task["doc_idx"]
+                    doc_pending_counts[doc_idx] = doc_pending_counts.get(doc_idx, 0) + 1
+                    pending.add(executor.submit(_score_task_with_task, task, cached, evaluator))
+                    if len(pending) >= max_pending:
+                        done, pending = concurrent.futures.wait(
+                            pending,
+                            return_when=concurrent.futures.FIRST_COMPLETED,
+                        )
+                        drain(done)
+                if pending:
+                    done, _ = concurrent.futures.wait(pending)
+                    drain(done)
+    finally:
+        empty_docs = task_stats.get("empty_docs", 0)
+        if empty_docs:
+            progress.update(empty_docs)
+        progress.close()
+
+    n_skipped_too_long = task_stats["skipped_too_long"]
 
     cached.close()
     elapsed = time.time() - t0

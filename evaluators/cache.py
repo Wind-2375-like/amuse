@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import re
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -124,6 +125,7 @@ class CachedEvaluator:
         cache_path = Path(cache_dir) / model_slug / f"{dataset}.jsonl"
         self.cache = JSONLCache(cache_path)
         self.cache_path = cache_path
+        self._lock = threading.Lock()
 
     def score(
         self,
@@ -140,7 +142,8 @@ class CachedEvaluator:
             model_name=self.evaluator.model_name,
             prompt_version=self.evaluator.prompt_version,
         )
-        hit = self.cache.get(key)
+        with self._lock:
+            hit = self.cache.get(key)
         if hit is not None and not hit.get("parse_failed", False):
             return (
                 SentenceScore(
@@ -154,7 +157,20 @@ class CachedEvaluator:
             )
         # cache miss OR previously-failed entry — re-score.
         score = self.evaluator.score_sentence(document, sentence)
-        self.cache.put(key, score)
+        with self._lock:
+            hit = self.cache.get(key)
+            if hit is not None and not hit.get("parse_failed", False):
+                return (
+                    SentenceScore(
+                        faithful=hit["faithful"],
+                        confidence=hit["confidence"],
+                        reason=hit.get("reason", ""),
+                        raw_response=hit.get("raw_response", ""),
+                        parse_failed=hit.get("parse_failed", False),
+                    ),
+                    True,
+                )
+            self.cache.put(key, score)
         return score, False
 
     def close(self) -> None:

@@ -1,5 +1,7 @@
 # Add model name parameter
 MODEL_NAME=$1
+SCORE_WORKERS="${SCORE_WORKERS:-16}"
+ENDPOINT="${ENDPOINT:-http://localhost:8000/v1}"
 
 # Usage: ./scripts/exp.sh <model_name>
 # chmod +x ./scripts/exp.sh first
@@ -26,6 +28,8 @@ else
   exit 1
 fi
 
+echo "[exp] model=$MODEL_NAME endpoint=$ENDPOINT workers=$SCORE_WORKERS"
+
 # python scripts/score_sentences.py \
 #     --dataset-path data/aggrefact_cnn/aggrefact_cnn.parquet \
 #     --dataset-name aggrefact_cnn \
@@ -44,4 +48,6 @@ fi
 python scripts/score_sentences.py \
     --dataset-path data/halueval/halueval.parquet \
     --dataset-name halueval \
-    --model $MODEL_NAME
+  --model "$MODEL_NAME" \
+  --endpoint "$ENDPOINT" \
+  --workers "$SCORE_WORKERS"
