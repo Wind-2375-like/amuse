@@ -8,16 +8,6 @@ summary-level score? We compare `min` / `mean` / `max` / softmin / trimmed
 mean / `prob_all_faithful` against human labels on AggreFact and other
 meta-eval benchmarks.
 
-**Status.**
-- **Phase 1** — data loading, sentence splitting, cached sentence-level LLM
-  scorer. ✅ done.
-- **Phase 2** — aggregation + meta-evaluation (correlation w/ bootstrap CIs)
-  on AggreFact-CNN + AggreFact-XSum, plus a sanity scatter plot. ✅ done.
-- **Phase 3** — multi-sentence benchmarks (DiverSumm, AggreFact-other-≥2s,
-  HaluEval)
-  added; data pipelines wired up. 🟡 in progress.
-- **Phase 4** — prompt ablations, model scaling. Not yet started.
-
 ---
 
 ## 1. Onboard in 5 minutes
