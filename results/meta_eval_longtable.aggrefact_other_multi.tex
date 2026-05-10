@@ -1,0 +1,82 @@
+\begin{longtable}{@{}llcccc@{}}
+\toprule
+Model & Aggregation & Pearson $r$ & Spearman $\rho$ & Kendall $\tau$ & ROC-AUC \\
+\midrule
+\endfirsthead
+
+\multicolumn{6}{l}{\small\textit{Table~\thetable\ continued from previous page.}}\\
+\toprule
+Model & Aggregation & Pearson $r$ & Spearman $\rho$ & Kendall $\tau$ & ROC-AUC \\
+\midrule
+\endhead
+
+\midrule
+\multicolumn{6}{r}{\small\textit{(continued on next page)}}\\
+\endfoot
+
+\bottomrule
+\caption{Full results on AggreFact-Other-Multi. Per-sentence scoring is either hard binary or soft logit-derived probability. Cells marked with \ns{} have a 95\% bootstrap CI that includes the null value (0 for Pearson, Spearman, Kendall; 0.5 for ROC-AUC).}
+\label{tab:full-aggrefact-other-multi}\\
+\endlastfoot
+
+% ============== HARD BLOCK ==============
+\multicolumn{6}{c}{\textbf{Hard sentence labels}} \\
+\midrule
+
+\multirow{3}{*}{Qwen3-4B}
+  & min & +0.070\ns & +0.070\ns & +0.070\ns & +0.540\ns \\
+  & mean & +0.180 & +0.177 & +0.165 & +0.626 \\
+  & max & +0.232 & +0.232 & +0.232 & +0.633 \\
+\cmidrule(l){2-6}
+\multirow{3}{*}{Qwen3-8B}
+  & min & +0.106 & +0.106 & +0.106 & +0.557 \\
+  & mean & +0.208 & +0.209 & +0.195 & +0.649 \\
+  & max & +0.233 & +0.233 & +0.233 & +0.644 \\
+\cmidrule(l){2-6}
+\multirow{3}{*}{Qwen3-32B}
+  & min & +0.188 & +0.188 & +0.188 & +0.611 \\
+  & mean & +0.235 & +0.236 & +0.220 & +0.670 \\
+  & max & +0.213 & +0.213 & +0.213 & +0.627 \\
+\cmidrule(l){2-6}
+\multirow{3}{*}{Llama-3.1-8B}
+  & min & +0.139 & +0.139 & +0.139 & +0.585 \\
+  & mean & +0.170 & +0.152 & +0.143 & +0.607 \\
+  & max & +0.166 & +0.166 & +0.166 & +0.581 \\
+\cmidrule(l){2-6}
+\multirow{3}{*}{OLMo-3-7B}
+  & min & +0.148 & +0.148 & +0.148 & +0.587 \\
+  & mean & +0.183 & +0.188 & +0.175 & +0.636 \\
+  & max & +0.159 & +0.159 & +0.159 & +0.598 \\
+\midrule
+
+% ============== SOFT BLOCK ==============
+\multicolumn{6}{c}{\textbf{Soft sentence probabilities}} \\
+\midrule
+
+\multirow{3}{*}{Qwen3-4B}
+  & min & +0.073 & +0.210 & +0.172 & +0.660 \\
+  & mean & +0.181 & +0.208 & +0.170 & +0.658 \\
+  & max & +0.232 & +0.259 & +0.213 & +0.698 \\
+\cmidrule(l){2-6}
+\multirow{3}{*}{Qwen3-8B}
+  & min & +0.118 & +0.235 & +0.193 & +0.679 \\
+  & mean & +0.215 & +0.250 & +0.204 & +0.690 \\
+  & max & +0.240 & +0.285 & +0.233 & +0.717 \\
+\cmidrule(l){2-6}
+\multirow{3}{*}{Qwen3-32B}
+  & min & +0.212 & +0.288 & +0.236 & +0.719 \\
+  & mean & +0.264 & +0.274 & +0.224 & +0.709 \\
+  & max & +0.256 & +0.276 & +0.226 & +0.710 \\
+\cmidrule(l){2-6}
+\multirow{3}{*}{Llama-3.1-8B}
+  & min & +0.207 & +0.203 & +0.166 & +0.654 \\
+  & mean & +0.225 & +0.194 & +0.158 & +0.648 \\
+  & max & +0.206 & +0.166 & +0.136 & +0.627 \\
+\cmidrule(l){2-6}
+\multirow{3}{*}{OLMo-3-7B}
+  & min & +0.201 & +0.258 & +0.211 & +0.697 \\
+  & mean & +0.221 & +0.226 & +0.185 & +0.672 \\
+  & max & +0.195 & +0.184 & +0.151 & +0.640 \\
+\midrule
+
+\end{longtable}
